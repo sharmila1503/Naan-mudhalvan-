@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en" ng-app="productApp">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Phase 6 - Product Catalog with Comparison & Reviews</title>
+  <script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.8.2/angular.min.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; background-color: #f4f4f4; transition: 0.4s; }
+    .dark-mode { background-color: #1e1e1e; color: #f1f1f1; }
+    header { background: #0078d7; color: white; padding: 15px; display: flex; justify-content: space-between; align-items: center; }
+    header input { padding: 6px; border-radius: 4px; border: none; width: 180px; }
+    .toggle-btn, .btn { border: none; border-radius: 4px; padding: 6px 10px; cursor: pointer; transition: 0.3s; }
+    .toggle-btn { background: white; color: #0078d7; }
+    .btn { background: #0078d7; color: white; }
+    .catalog { display: flex; flex-wrap: wrap; justify-content: center; gap: 20px; padding: 20px; }
+    .card { background: white; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,0.1); padding: 15px; width: 220px; text-align: center; transition: transform 0.3s; position: relative; }
+    .dark-mode .card { background: #2c2c2c; color: #fff; }
+    .card:hover { transform: translateY(-5px); }
+    .card img { width: 100%; height: 150px; border-radius: 8px; object-fit: cover; }
+    .price { color: green; font-weight: bold; }
+    .discount { position: absolute; top: 10px; right: 10px; background: red; color: white; padding: 3px 6px; border-radius: 5px; font-size: 12px; }
+    .controls { text-align: center; margin: 15px; }
+    .compare-bar { background: #0078d7; color: white; padding: 10px; text-align: center; }
+    .compare-bar button { margin-left: 10px; }
+    .compare-table { width: 90%; margin: 20px auto; border-collapse: collapse; }
+    .compare-table th, .compare-table td { border: 1px solid #ddd; padding: 10px; text-align: center; }
+    .review-box { margin-top: 10px; }
+    textarea { width: 90%; height: 50px; border-radius: 5px; padding: 5px; }
+    .review { font-size: 13px; border-top: 1px solid #ccc; padding-top: 5px; margin-top: 5px; }
+    .stock { font-weight: bold; }
+    .in-stock { color: green; }
+    .out-stock { color: red; }
+  </style>
+</head>
+
+<body ng-controller="ProductController" ng-class="{'dark-mode': darkMode}">
+
+  <header>
+    <h1>🛍 Product Catalog</h1>
+    <div>
+      <input type="text" ng-model="searchText" placeholder="Search...">
+      <button class="toggle-btn" ng-click="toggleMode()">{{darkMode ? '☀ Light' : '🌙 Dark'}}</button>
+      <button class="btn" ng-click="toggleCart()">🛒 ({{cart.length}})</button>
+      <button class="btn" ng-click="toggleWishlist()">❤️ ({{wishlist.length}})</button>
+    </div>
+  </header>
+
+  <!-- Filter Controls -->
+  <div class="controls">
+    <select ng-model="selectedCategory" ng-change="applyFilters()">
+      <option value="All">All Categories</option>
+      <option ng-repeat="cat in categories">{{cat}}</option>
+    </select>
+
+    <select ng-model="sortOption" ng-change="applyFilters()">
+      <option value="none">Sort By</option>
+      <option value="priceLow">Price: Low → High</option>
+      <option value="priceHigh">Price: High → Low</option>
+      <option value="ratingHigh">Rating: High → Low</option>
+    </select>
+  </div>
+
+  <!-- Comparison Bar -->
+  <div class="compare-bar" ng-if="compareList.length > 0">
+    {{compareList.length}} products selected for comparison
+    <button class="btn" ng-click="compareProducts()">Compare Now</button>
+    <button class="btn" ng-click="clearCompare()">Clear</button>
+  </div>
+
+  <!-- Product Grid -->
+  <div class="catalog">
+    <div class="card" ng-repeat="p in filteredProducts | filter:searchText">
+      <span ng-if="p.offerPrice < p.price" class="discount">-{{getDiscount(p)}}%</span>
+      <img ng-src="{{p.image}}" alt="{{p.name}}">
+      <h3>{{p.name}}</h3>
+      <p>{{p.category}}</p>
+      <p class="price">
+        ₹{{p.offerPrice || p.price}} 
+        <span ng-if="p.offerPrice < p.price" style="text-decoration:line-through;color:gray;font-size:12px;">₹{{p.price}}</span>
+      </p>
+
+      <p class="stock" ng-class="p.stock > 0 ? 'in-stock':'out-stock'">
+        {{p.stock > 0 ? 'In Stock' : 'Out of Stock'}}
+      </p>
+
+      <div>
+        <span ng-repeat="star in [1,2,3,4,5]"
+              ng-click="rateProduct(p, star)"
+              ng-class="{'star': true, 'selected': star <= p.rating}">★</span>
+        <p>Rating: {{p.rating}}/5</p>
+      </div>
+
+      <button class="btn" ng-click="addToCart(p)" ng-disabled="p.stock==0">Add to Cart</button>
+      <button class="wishlist-btn" ng-click="toggleWishlistItem(p)">
+        {{isInWishlist(p) ? '💔' : '❤️'}}
+      </button>
+      <button class="btn" ng-click="toggleCompare(p)">
+        {{isInCompare(p) ? '✓ Compared' : '📊 Compare'}}
+      </button>
+
+      <!-- Review Section -->
+      <div class="review-box">
+        <textarea ng-model="p.newReview" placeholder="Write review..."></textarea><br>
+        <button class="btn" ng-click="addReview(p)">Post</button>
+        <div ng-repeat="r in p.reviews" class="review">💬 {{r}}</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Comparison Table -->
+  <table class="compare-table" ng-if="showCompareTable">
+    <tr>
+      <th>Product</th>
+      <th ng-repeat="c in compareList">{{c.name}}</th>
+    </tr>
+    <tr>
+      <td>Category</td>
+      <td ng-repeat="c in compareList">{{c.category}}</td>
+    </tr>
+    <tr>
+      <td>Price</td>
+      <td ng-repeat="c in compareList">₹{{c.offerPrice || c.price}}</td>
+    </tr>
+    <tr>
+      <td>Rating</td>
+      <td ng-repeat="c in compareList">{{c.rating}}/5</td>
+    </tr>
+    <tr>
+      <td>Stock</td>
+      <td ng-repeat="c in compareList">{{c.stock>0 ? 'In Stock':'Out of Stock'}}</td>
+    </tr>
+  </table>
+
+  <script>
+    const app = angular.module("productApp", []);
+
+    app.controller("ProductController", function($scope) {
+      $scope.darkMode = JSON.parse(localStorage.getItem("darkMode")) || false;
+      $scope.toggleMode = function() {
+        $scope.darkMode = !$scope.darkMode;
+        localStorage.setItem("darkMode", $scope.darkMode);
+      };
+
+      // Products with Offer, Stock & Reviews
+      $scope.products = [
+        { name: "Laptop", category: "Electronics", price: 95000, offerPrice: 87000, image: "https://via.placeholder.com/200x150?text=Laptop", rating: 4, stock: 5, reviews: [] },
+        { name: "Smartwatch", category: "Electronics", price: 4500, offerPrice: 4000, image: "https://via.placeholder.com/200x150?text=Smartwatch", rating: 5, stock: 3, reviews: [] },
+        { name: "T-Shirt", category: "Fashion", price: 800, offerPrice: 700, image: "https://via.placeholder.com/200x150?text=T-Shirt", rating: 4, stock: 10, reviews: [] },
+        { name: "Shoes", category: "Fashion", price: 2200, offerPrice: 2000, image: "https://via.placeholder.com/200x150?text=Shoes", rating: 5, stock: 0, reviews: [] },
+        { name: "Mobile", category: "Electronics", price: 25000, offerPrice: 22000, image: "https://via.placeholder.com/200x150?text=Mobile", rating: 4, stock: 2, reviews: [] },
+        { name: "Dress", category: "Fashion", price: 1500, offerPrice: 1300, image: "https://via.placeholder.com/200x150?text=Dress", rating: 5, stock: 4, reviews: [] }
+      ];
+
+      $scope.categories = [...new Set($scope.products.map(p => p.category))];
+      $scope.selectedCategory = "All";
+      $scope.sortOption = "none";
+
+      $scope.cart = JSON.parse(localStorage.getItem("cart")) || [];
+      $scope.wishlist = JSON.parse(localStorage.getItem("wishlist")) || [];
+      $scope.compareList = [];
+      $scope.showCompareTable = false;
+
+      // Filters
+      $scope.applyFilters = function() {
+        let filtered = $scope.products.filter(p =>
+          ($scope.selectedCategory === "All" || p.category === $scope.selectedCategory)
+        );
+        if ($scope.sortOption === "priceLow") filtered.sort((a,b)=>a.price-b.price);
+        if ($scope.sortOption === "priceHigh") filtered.sort((a,b)=>b.price-a.price);
+        if ($scope.sortOption === "ratingHigh") filtered.sort((a,b)=>b.rating-a.rating);
+        $scope.filteredProducts = filtered;
+      };
+
+      // Ratings
+      $scope.rateProduct = function(product, rating) { product.rating = rating; };
+
+      // Cart
+      $scope.addToCart = function(p) {
+        let existing = $scope.cart.find(i => i.name === p.name);
+        if (existing) existing.qty++;
+        else $scope.cart.push({ ...p, qty: 1 });
+        localStorage.setItem("cart", JSON.stringify($scope.cart));
+      };
+
+      // Wishlist
+      $scope.toggleWishlistItem = function(p) {
+        if ($scope.isInWishlist(p))
+          $scope.wishlist = $scope.wishlist.filter(i => i.name !== p.name);
+        else $scope.wishlist.push(p);
+        localStorage.setItem("wishlist", JSON.stringify($scope.wishlist));
+      };
+      $scope.isInWishlist = function(p) { return $scope.wishlist.some(i => i.name === p.name); };
+
+      // Comparison Feature
+      $scope.toggleCompare = function(p) {
+        if ($scope.isInCompare(p))
+          $scope.compareList = $scope.compareList.filter(i => i.name !== p.name);
+        else if ($scope.compareList.length < 3)
+          $scope.compareList.push(p);
+        alert($scope.compareList.length <= 3 ? '' : 'Max 3 products allowed');
+      };
+      $scope.isInCompare = function(p) { return $scope.compareList.some(i => i.name === p.name); };
+      $scope.compareProducts = function() { $scope.showCompareTable = true; };
+      $scope.clearCompare = function() { $scope.compareList = []; $scope.showCompareTable = false; };
+
+      // Reviews
+      $scope.addReview = function(p) {
+        if (p.newReview && p.newReview.trim() !== "") {
+          p.reviews.push(p.newReview);
+          p.newReview = "";
+        }
+      };
+
+      // Discount %
+      $scope.getDiscount = function(p) {
+        return Math.round(((p.price - p.offerPrice) / p.price) * 100);
+      };
+
+      $scope.applyFilters();
+    });
+  </script>
+</body>
+</html>
